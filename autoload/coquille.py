@@ -25,14 +25,14 @@ info_msg = None
 # synchronization #
 ###################
 
-def sync():
+def sync(keep_info=False):
     global saved_sync
     curr_sync = vimbufsync.sync()
     if not saved_sync or curr_sync.buf() != saved_sync.buf():
         _reset()
     else:
         (line, col) = saved_sync.pos()
-        rewind_to(line - 1, col) # vim indexes from lines 1, coquille from 0
+        rewind_to(line - 1, col, keep_info) # vim indexes from lines 1, coquille from 0
     saved_sync = curr_sync
 
 def _reset():
@@ -56,9 +56,7 @@ def goto_last_sent_dot():
     (line, col) = (0,1) if encountered_dots == [] else encountered_dots[-1]
     vim.current.window.cursor = (line + 1, col)
 
-def coq_rewind(steps=1):
-    clear_info()
-
+def do_coq_rewind(steps):
     global encountered_dots, info_msg
 
     if steps < 1 or encountered_dots == []:
@@ -75,11 +73,15 @@ def coq_rewind(steps=1):
         print('ERROR: the Coq process died')
         return
 
-    if isinstance(response, CT.Ok):
+    if isinstance(response, CT.Ok) or isinstance(response, CT.Err):
         encountered_dots = encountered_dots[:len(encountered_dots) - steps]
     else:
         info_msg = "[COQUILLE ERROR] Unexpected answer:\n\n%s" % response
 
+def coq_rewind(steps=1, keep_info=False):
+    if not keep_info:
+        clear_info()
+    do_coq_rewind(steps)
     refresh()
 
     # steps != 1 means that either the user called "CoqToCursor" or just started
@@ -127,7 +129,6 @@ def coq_next():
     send_queue.append(message_range)
 
     send_until_fail()
-
     if (vim.eval('g:coquille_auto_move') == 'true'):
         goto_last_sent_dot()
 
@@ -198,6 +199,10 @@ def show_goal():
         print('ERROR: the Coq process died')
         return
 
+    if isinstance(response, CT.Err):
+        set_error_info(response.err)
+        return
+
     if response.msg is not None:
         info_msg = response.msg
 
@@ -227,6 +232,18 @@ def show_goal():
         lines = map(lambda s: s.encode('utf-8'), ccl.split('\n'))
         buff.append(lines)
         buff.append('')
+
+def set_error_info(error):
+    global info_msg, message, message_range, error_at
+    info_msg = CT.decode_xml_text(ET.tostring(error))
+    loc_s = error.get('loc_s')
+    if loc_s is not None:
+        loc_s = int(loc_s)
+        loc_e = int(error.get('loc_e'))
+        (l, c) = message_range['start']
+        (l_start, c_start) = _pos_from_offset(c, message, loc_s)
+        (l_stop, c_stop)   = _pos_from_offset(c, message, loc_e)
+        error_at = ((l + l_start, c_start), (l + l_stop, c_stop))
 
 def show_info():
     global info_msg
@@ -283,7 +300,7 @@ def reset_color():
         vim.command("let b:errors = matchadd('CoqError', '%s')" % zone)
         error_at = None
 
-def rewind_to(line, col):
+def rewind_to(line, col, keep_info=False):
     if CT.coqtop is None:
         print('Internal error: vimbufsync is still being called but coqtop\
                 appears to be down.')
@@ -293,7 +310,20 @@ def rewind_to(line, col):
     predicate = lambda x: x <= (line, col)
     lst = filter(predicate, encountered_dots)
     steps = len(encountered_dots) - len(lst)
-    coq_rewind(steps)
+    coq_rewind(steps, keep_info)
+
+def set_response_info(resp_adv, resp_goal):
+    global info_msg
+    if len(resp_adv.val) > 1 and isinstance(resp_adv.val[1], tuple):
+        info_msg = resp_adv.val[1][1]
+        m = resp_goal.msg
+        if m == None:
+            return
+        e = 'master'
+        if len(m) < len(e) or m[:len(e)] != e:
+            info_msg += m
+        else:
+            info_msg += m[len(e):]
 
 #############################
 # Communication with Coqtop #
@@ -307,7 +337,7 @@ def send_until_fail():
     """
     clear_info()
 
-    global encountered_dots, error_at, info_msg
+    global encountered_dots, message, message_range
 
     encoding = vim.eval('&fileencoding') or 'utf-8'
 
@@ -318,35 +348,30 @@ def send_until_fail():
         message_range = send_queue.popleft()
         message = _between(message_range['start'], message_range['stop'])
 
-        response = CT.advance(message, encoding)
+        resp_adv = CT.advance(message, encoding)
+        resp_goal = CT.goals()
 
-        if response is None:
+        if resp_adv is None or resp_goal is None:
             vim.command("call coquille#KillSession()")
             print('ERROR: the Coq process died')
             return
 
-        if isinstance(response, CT.Ok):
+        if isinstance(resp_adv, CT.Ok) and isinstance(resp_goal, CT.Ok):
             (eline, ecol) = message_range['stop']
             encountered_dots.append((eline, ecol + 1))
 
-            optionnal_info = response.val[1]
-            if len(response.val) > 1 and isinstance(response.val[1], tuple):
-                info_msg = response.val[1][1]
+            optionnal_info = resp_adv.val[1]
+            set_response_info(resp_adv, resp_goal)
         else:
             send_queue.clear()
-            if isinstance(response, CT.Err):
-                response = response.err
-                info_msg = response.text
-                loc_s = response.get('loc_s')
-                if loc_s is not None:
-                    loc_s = int(loc_s)
-                    loc_e = int(response.get('loc_e'))
-                    (l, c) = message_range['start']
-                    (l_start, c_start) = _pos_from_offset(c, message, loc_s)
-                    (l_stop, c_stop)   = _pos_from_offset(c, message, loc_e)
-                    error_at = ((l + l_start, c_start), (l + l_stop, c_stop))
+            if isinstance(resp_adv, CT.Err):
+                set_error_info(resp_adv.err)
+            elif isinstance(resp_goal, CT.Err):
+                set_error_info(resp_goal.err)
+                CT.rewind(1)
             else:
-                print("(ANOMALY) unknown answer: %s" % ET.tostring(response))
+                print("(ANOMALY) unknown answer: %s AND %s" %\
+                        ET.tostring(resp_adv), ET.tostring(resp_goal))
             break
 
     refresh()

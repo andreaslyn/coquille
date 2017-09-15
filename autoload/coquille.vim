@@ -97,7 +97,7 @@ function! coquille#Launch(...)
         " delete some part of your buffer. So the highlighting will be wrong, but
         " nothing really problematic will happen, as sync will be called the next
         " time you explicitly call a command (be it 'rewind' or 'interp')
-        au InsertEnter <buffer> py coquille.sync()
+        au InsertEnter <buffer> py coquille.sync(keep_info=True)
     endif
 endfunction
 
@@ -109,6 +109,8 @@ function! coquille#Register()
     let b:checked = -1
     let b:sent    = -1
     let b:errors  = -1
+
+    set indentexpr=
 
     command! -bar -buffer -nargs=* -complete=file CoqLaunch call coquille#Launch(<f-args>)
 endfunction

@@ -29,7 +29,6 @@ def parse_response(xml):
     if xml.get('val') == 'good':
         return Ok(parse_value(xml[0]), None)
     elif xml.get('val') == 'fail':
-        print('err: %s' % ET.tostring(xml))
         return Err(parse_error(xml))
     else:
         assert False, 'expected "good" or "fail" in <value>'
@@ -87,6 +86,15 @@ def parse_value(xml):
 
 def parse_error(xml):
     return ET.fromstring(re.sub(r"<state_id val=\"\d+\" />", '', ET.tostring(xml)))
+
+def decode_xml_text(xml):
+    xml = re.sub(r"</_>", '\n', xml)
+    xml = re.sub(r"<(\w|/\w)[\s\S]*?>", '', xml)
+    return xml \
+            .replace('&gt;', '>') \
+            .replace('&lt;', '<') \
+            .replace('&quot;', '"') \
+            .replace('&amp;', '&')
 
 def build(tag, val=None, children=()):
     attribs = {'val': val} if val is not None else {}
@@ -153,7 +161,7 @@ def kill_coqtop():
 def ignore_sigint():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-def escape(cmd):
+def unescape(cmd):
     return cmd.replace("&nbsp;", ' ') \
               .replace("&apos;", '\'') \
               .replace("&#40;", '(') \
@@ -165,9 +173,10 @@ def get_answer():
     data = ''
     while True:
         try:
-            data += os.read(fd, 0x4000)
+            data += unescape(os.read(fd, 0x4000))
+            data = unescape(data)
             try:
-                elt = ET.fromstring('<coqtoproot>' + escape(data) + '</coqtoproot>')
+                elt = ET.fromstring('<coqtoproot>' + data + '</coqtoproot>')
                 shouldWait = True
                 valueNode = None
                 for c in elt:
@@ -182,7 +191,7 @@ def get_answer():
                     vp = parse_response(valueNode)
                     if messageNode is not None:
                         if isinstance(vp, Ok):
-                            return Ok(vp.val, parse_value(messageNode).val)
+                            return Ok(vp.val, decode_xml_text(data))
                     return vp
             except ET.ParseError:
                 continue
