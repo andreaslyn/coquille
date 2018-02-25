@@ -256,7 +256,7 @@ def show_info():
 
     del buff[:]
     if info_msg is not None:
-        lst = info_msg.split('\n')
+        lst = info_msg.decode('utf-8').split('\n')
         buff.append(map(lambda s: s.encode('utf-8'), lst))
 
 def clear_info():

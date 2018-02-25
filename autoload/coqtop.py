@@ -102,19 +102,19 @@ def build(tag, val=None, children=()):
     xml.extend(children)
     return xml
 
-def encode_call(name, arg):
-    return build('call', name, [encode_value(arg)])
+def encode_call(name, arg, encoding):
+    return build('call', name, [encode_value(arg, encoding)])
 
-def encode_value(v):
+def encode_value(v, encoding):
     if v == ():
         return build('unit')
     elif isinstance(v, bool):
         xml = build('bool', str(v).lower())
         xml.text = str(v)
         return xml
-    elif isinstance(v, str):
+    elif isinstance(v, str): #or isinstance(v, unicode):
         xml = build('string')
-        xml.text = v
+        xml.text = v.decode(encoding)
         return xml
     elif isinstance(v, int):
         xml = build('int')
@@ -123,23 +123,23 @@ def encode_value(v):
     elif isinstance(v, StateId):
         return build('state_id', str(v.id))
     elif isinstance(v, list):
-        return build('list', None, [encode_value(c) for c in v])
+        return build('list', None, [encode_value(c, encoding) for c in v])
     elif isinstance(v, Option):
         xml = build('option')
         if v.val is not None:
             xml.set('val', 'some')
-            xml.append(encode_value(v.val))
+            xml.append(encode_value(v.val, encoding))
         else:
             xml.set('val', 'none')
         return xml
     elif isinstance(v, Inl):
-        return build('union', 'in_l', [encode_value(v.val)])
+        return build('union', 'in_l', [encode_value(v.val, encoding)])
     elif isinstance(v, Inr):
-        return build('union', 'in_r', [encode_value(v.val)])
+        return build('union', 'in_r', [encode_value(v.val, encoding)])
     # NB: `tuple` check must be at the end because it overlaps with () and
     # namedtuples.
     elif isinstance(v, tuple):
-        return build('pair', None, [encode_value(c) for c in v])
+        return build('pair', None, [encode_value(c, encoding) for c in v])
     else:
         assert False, 'unrecognized type in encode_value: %r' % (type(v),)
 
@@ -200,7 +200,7 @@ def get_answer():
             return None
 
 def call(name, arg, encoding='utf-8'):
-    xml = encode_call(name, arg)
+    xml = encode_call(name, arg, encoding)
     msg = ET.tostring(xml, encoding)
     send_cmd(msg)
     response = get_answer()
