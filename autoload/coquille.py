@@ -9,6 +9,8 @@ from collections import deque
 import vimbufsync
 vimbufsync.check_version("0.1.0", who="coquille")
 
+#DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+
 #: See vimbufsync ( https://github.com/def-lkb/vimbufsync )
 saved_sync = None
 
@@ -144,7 +146,7 @@ def coq_raw_query(*args):
 
     encoding = vim.eval("&encoding") or 'utf-8'
 
-    response = CT.query(raw_query, encoding)
+    response = CT.raw_query(raw_query, encoding)
 
     if response is None:
         vim.command("call coquille#KillSession()")

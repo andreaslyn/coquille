@@ -6,12 +6,15 @@ import signal
 
 from collections import deque, namedtuple
 
+#DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+
 Ok = namedtuple('Ok', ['val', 'msg'])
 Err = namedtuple('Err', ['err'])
 
 Inl = namedtuple('Inl', ['val'])
 Inr = namedtuple('Inr', ['val'])
 
+RouteId = namedtuple('RouteId', ['id'])
 StateId = namedtuple('StateId', ['id'])
 Option = namedtuple('Option', ['val'])
 
@@ -120,6 +123,8 @@ def encode_value(v, encoding):
         xml = build('int')
         xml.text = str(v)
         return xml
+    elif isinstance(v, RouteId):
+        return build('route_id', str(v.id))
     elif isinstance(v, StateId):
         return build('state_id', str(v.id))
     elif isinstance(v, list):
@@ -175,6 +180,8 @@ def get_answer():
         try:
             data += unescape(os.read(fd, 0x4000))
             data = unescape(data)
+            #DEBUGFILE.write('read data: ' + data + '\n')
+            #DEBUGFILE.flush()
             try:
                 elt = ET.fromstring('<coqtoproot>' + data + '</coqtoproot>')
                 shouldWait = True
@@ -185,6 +192,9 @@ def get_answer():
                         valueNode = c
                     if c.tag == 'message':
                         messageNode = c[1]
+                    if c.tag == 'feedback' and c[1].attrib['val'] == 'message':
+                        for m in c[1]:
+                            messageNode = m[1]
                 if shouldWait:
                     continue
                 else:
@@ -207,12 +217,14 @@ def call(name, arg, encoding='utf-8'):
     return response
 
 def send_cmd(cmd):
+    #DEBUGFILE.write('send_cmd: ' + cmd + '\n');
+    #DEBUGFILE.flush()
     coqtop.stdin.write(cmd)
 
 def restart_coq(*args):
     global coqtop, root_state, state_id
     if coqtop: kill_coqtop()
-    options = [ 'coqtop'
+    options = [ '/home/andreas/Source/HoTT/hoqtop'
               , '-ideslave'
               , '-main-channel'
               , 'stdfds'
@@ -269,6 +281,10 @@ def rewind(step = 1):
     state_id = states[idx]
     states = states[0:idx]
     return call('Edit_at', state_id)
+
+def raw_query(cmd, encoding = 'utf-8'):
+    r = call('Query', (RouteId(0), (cmd, cur_state())), encoding)
+    return r
 
 def query(cmd, encoding = 'utf-8'):
     r = call('Query', (cmd, cur_state()), encoding)
