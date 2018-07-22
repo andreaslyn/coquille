@@ -3,6 +3,9 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 import signal
+import HTMLParser
+import urllib2
+import sys
 
 from collections import deque, namedtuple
 
@@ -90,14 +93,14 @@ def parse_value(xml):
 def parse_error(xml):
     return ET.fromstring(re.sub(r"<state_id val=\"\d+\" />", '', ET.tostring(xml)))
 
+htmlparser = HTMLParser.HTMLParser()
+fsencoding = sys.getfilesystemencoding()
+
 def decode_xml_text(xml):
     xml = re.sub(r"</_>", '\n', xml)
     xml = re.sub(r"<(\w|/\w)[\s\S]*?>", '', xml)
-    return xml \
-            .replace('&gt;', '>') \
-            .replace('&lt;', '<') \
-            .replace('&quot;', '"') \
-            .replace('&amp;', '&')
+    xml = urllib2.unquote(xml).decode('utf-8')
+    return htmlparser.unescape(xml).encode(fsencoding)
 
 def build(tag, val=None, children=()):
     attribs = {'val': val} if val is not None else {}
@@ -224,7 +227,7 @@ def send_cmd(cmd):
 def restart_coq(*args):
     global coqtop, root_state, state_id
     if coqtop: kill_coqtop()
-    options = [ '/home/andreas/Source/HoTT/hoqtop'
+    options = [ '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqtop'
               , '-ideslave'
               , '-main-channel'
               , 'stdfds'

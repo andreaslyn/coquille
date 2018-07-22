@@ -10,6 +10,7 @@ import vimbufsync
 vimbufsync.check_version("0.1.0", who="coquille")
 
 #DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+#def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
 
 #: See vimbufsync ( https://github.com/def-lkb/vimbufsync )
 saved_sync = None
