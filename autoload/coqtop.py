@@ -224,6 +224,29 @@ def send_cmd(cmd):
     #DEBUGFILE.flush()
     coqtop.stdin.write(cmd)
 
+def do_parse_CoqProject_arg(line, dq, sq, acc):
+    if not len(line):
+        return [acc]
+    c = line[0]
+    if re.match("\s", c) and not dq and not sq:
+        return [acc] + do_parse_CoqProject_arg(line.strip(), False, False, "")
+    elif (c == '"' and dq) or (c == "'" and sq):
+        return do_parse_CoqProject_arg(line[1:], False, False, acc)
+    elif c == '"' and not sq:
+        return do_parse_CoqProject_arg(line[1:], True, False, acc)
+    elif c == "'" and not dq:
+        return do_parse_CoqProject_arg(line[1:], False, True, acc)
+    return do_parse_CoqProject_arg(line[1:], dq, sq, acc + line[0])
+
+def parse_CoqProject_arg(line):
+    # filter(lambda s: s != '', map(lambda s: s.strip(), ln.split()))
+    line = line.strip()
+    if line[0] == '"':
+        return do_parse_CoqProject_arg(line[1:], True, False, "")
+    if line[0] == "'":
+        return do_parse_CoqProject_arg(line[1:], False, True, "")
+    return do_parse_CoqProject_arg(line[1:], False, False, line[0:1])
+
 def find_CoqProject_flags():
     def read_CoqProject(d):
         files = os.listdir(d)
@@ -239,7 +262,11 @@ def find_CoqProject_flags():
         if not len(ln):
             continue
         if ln[0] == '-':
-            ret += filter(lambda s: s != '', map(lambda s: s.strip(), ln.split()))
+            args = re.split("\s+", ln, 1)
+            if len(args) > 0:
+                ret += [args[0]]
+            if len(args) > 1:
+                ret += parse_CoqProject_arg(args[1])
     #DEBUGFILE.write('_CopProject flags:\n')
     #for r in ret:
     #    DEBUGFILE.write(r + '\n')
@@ -251,8 +278,8 @@ def restart_coq(*args):
     if coqtop: kill_coqtop()
     #executable = '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqidetop'; extra = []
     #executable = '/home/andreas/Source/Coq-Equations/Equations-HoTT/hoqidetop'; extra = []
-    #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
-    executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
+    executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
+    #executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
     options = [ executable
               , '-quiet'
               , '-main-channel'
