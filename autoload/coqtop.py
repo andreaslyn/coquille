@@ -224,16 +224,44 @@ def send_cmd(cmd):
     #DEBUGFILE.flush()
     coqtop.stdin.write(cmd)
 
+def find_CoqProject_flags():
+    def read_CoqProject(d):
+        files = os.listdir(d)
+        for f in files:
+            if f == '_CoqProject':
+                with open(d + '/' + f, 'r') as g: return g.read()
+        c = os.path.dirname(d)
+        return '' if c == d else read_CoqProject(c)
+    s = read_CoqProject(os.getcwd())
+    ret = []
+    for ln in s.split('\n'):
+        ln = ln.strip()
+        if not len(ln):
+            continue
+        if ln[0] == '-':
+            ret += filter(lambda s: s != '', map(lambda s: s.strip(), ln.split()))
+    #DEBUGFILE.write('_CopProject flags:\n')
+    #for r in ret:
+    #    DEBUGFILE.write(r + '\n')
+    #DEBUGFILE.flush()
+    return ret
+
 def restart_coq(*args):
     global coqtop, root_state, state_id
     if coqtop: kill_coqtop()
-    options = [ '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqtop'
-              , '-ideslave'
+    #executable = '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqidetop'; extra = []
+    #executable = '/home/andreas/Source/Coq-Equations/Equations-HoTT/hoqidetop'; extra = []
+    #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
+    executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
+    options = [ executable
+              , '-quiet'
               , '-main-channel'
               , 'stdfds'
               , '-async-proofs'
               , 'on'
               ]
+    options += extra
+    options += find_CoqProject_flags()
     try:
         if os.name == 'nt':
             coqtop = subprocess.Popen(
