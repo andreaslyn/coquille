@@ -6,10 +6,16 @@ import signal
 import HTMLParser
 import urllib2
 import sys
+import time
+import vim
+import select
+
+poll = select.poll()
 
 from collections import deque, namedtuple
 
 #DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+#def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
 
 Ok = namedtuple('Ok', ['val', 'msg'])
 Err = namedtuple('Err', ['err'])
@@ -99,7 +105,11 @@ fsencoding = sys.getfilesystemencoding()
 def decode_xml_text(xml):
     xml = re.sub(r"</_>", '\n', xml)
     xml = re.sub(r"<(\w|/\w)[\s\S]*?>", '', xml)
-    xml = urllib2.unquote(xml).decode('utf-8')
+    try:
+        xml = urllib2.unquote(xml).decode('utf-8')
+    except:
+        #debugln('invaid XML:\n' + str(xml))
+        xml = xml.decode('utf-8')
     return htmlparser.unescape(xml).encode(fsencoding)
 
 def build(tag, val=None, children=()):
@@ -160,6 +170,10 @@ def kill_coqtop():
     global coqtop
     if coqtop:
         try:
+            poll.unregister(coqtop.stdout.fileno())
+        except KeyError:
+            pass
+        try:
             coqtop.terminate()
             coqtop.communicate()
         except OSError:
@@ -175,16 +189,25 @@ def unescape(cmd):
               .replace("&#40;", '(') \
               .replace("&#41;", ')')
 
-def get_answer():
-    fd = coqtop.stdout.fileno()
+def get_answer(do_timeout=False):
     messageNode = None
+    timeout = float(vim.eval('g:coquille_timeout'))
+    starttime = time.time()
     data = ''
     while True:
+        if do_timeout and time.time() - starttime >= timeout:
+            return Err(ET.fromstring('<coqtoproot>Timeout: ' + str(timeout) + ' seconds\nCoq is still up and running!\nChange timeout with let g:coquille_timeout=SECONDS</coqtoproot>'))
         try:
+            p = poll.poll(timeout*1000)
+            if p == []:
+                kill_coqtop()
+                return Err(ET.fromstring('<coqtoproot>Coq has died!\nTimeout: ' + str(timeout) + ' seconds\nChange timeout with let g:coquille_timeout=SECONDS</coqtoproot>'))
+
+            fd = p[0][0]
+
             data += unescape(os.read(fd, 0x4000))
             data = unescape(data)
-            #DEBUGFILE.write('read data: ' + data + '\n')
-            #DEBUGFILE.flush()
+            #debugln('read data: ' + data)
             try:
                 elt = ET.fromstring('<coqtoproot>' + data + '</coqtoproot>')
                 shouldWait = True
@@ -212,16 +235,15 @@ def get_answer():
             # coqtop died
             return None
 
-def call(name, arg, encoding='utf-8'):
+def call(name, arg, encoding='utf-8', do_timeout=False):
     xml = encode_call(name, arg, encoding)
     msg = ET.tostring(xml, encoding)
     send_cmd(msg)
-    response = get_answer()
+    response = get_answer(do_timeout)
     return response
 
 def send_cmd(cmd):
-    #DEBUGFILE.write('send_cmd: ' + cmd + '\n');
-    #DEBUGFILE.flush()
+    #debugln('send_cmd: ' + cmd);
     coqtop.stdin.write(cmd)
 
 def do_parse_CoqProject_arg(line, dq, sq, acc):
@@ -267,10 +289,9 @@ def find_CoqProject_flags():
                 ret += [args[0]]
             if len(args) > 1:
                 ret += parse_CoqProject_arg(args[1])
-    #DEBUGFILE.write('_CopProject flags:\n')
+    #debugln('_CopProject flags:')
     #for r in ret:
-    #    DEBUGFILE.write(r + '\n')
-    #DEBUGFILE.flush()
+    #    debugln(r)
     return ret
 
 def restart_coq(*args):
@@ -278,8 +299,11 @@ def restart_coq(*args):
     if coqtop: kill_coqtop()
     #executable = '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqidetop'; extra = []
     #executable = '/home/andreas/Source/Coq-Equations/Equations-HoTT/hoqidetop'; extra = []
-    executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
-    #executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
+    #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
+    executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
+    #executable = 'coqidetop'; extra = ['-allow-sprop']
+    #executable = 'coqidetop'; extra = ['-coqlib', '/home/andreas/Source/coq', '-q', '-native-compiler', 'yes', '-allow-sprop']
+    #executable = '/home/andreas/Source/UniMath/sub/coq/bin/coqidetop.opt'; extra = [] # extra = ['-ideslave']
     options = [ executable
               , '-quiet'
               , '-main-channel'
@@ -305,6 +329,8 @@ def restart_coq(*args):
               , preexec_fn = ignore_sigint
             )
 
+        poll.register(coqtop.stdout.fileno())
+
         r = call('Init', Option(None))
         assert isinstance(r, Ok)
         root_state = r.val
@@ -323,7 +349,7 @@ def cur_state():
 
 def advance(cmd, encoding = 'utf-8'):
     global state_id
-    r = call('Add', ((cmd, -1), (cur_state(), True)), encoding)
+    r = call('Add', ((cmd, -1), (cur_state(), True)), encoding, do_timeout=True)
     if r is None:
         return r
     if isinstance(r, Err):
@@ -348,8 +374,10 @@ def query(cmd, encoding = 'utf-8'):
     r = call('Query', (cmd, cur_state()), encoding)
     return r
 
-def goals():
-    return call('Goal', ())
+def goals(encoding = 'utf-8'):
+    return call('Goal', (), encoding, do_timeout=True)
 
 def read_states():
     return states
+
+def isrunning(): return coqtop != None

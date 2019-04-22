@@ -12,7 +12,7 @@ endif
 syn keyword coqKeyword let fix cofix for if IF then else λ fun forall exists match mod end exists2 struct where with using at as return in
 hi def link coqKeyword Keyword
 
-syn keyword coqSpecialName _ Set Type Prop
+syn keyword coqSpecialName _ Set Type Prop SProp
 hi def link coqSpecialName Function
 
 syn keyword coqProof Proof Qed Defined

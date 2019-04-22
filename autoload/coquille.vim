@@ -5,6 +5,11 @@ if !exists('coquille_auto_move')
     let g:coquille_auto_move="false"
 endif
 
+" Timeout in seconds
+if !exists('coquille_timeout')
+    let g:coquille_timeout=7
+endif
+
 " Load vimbufsync if not already done
 call vimbufsync#init()
 
@@ -97,7 +102,8 @@ function! coquille#Launch(...)
         " delete some part of your buffer. So the highlighting will be wrong, but
         " nothing really problematic will happen, as sync will be called the next
         " time you explicitly call a command (be it 'rewind' or 'interp')
-        au InsertEnter <buffer> py coquille.sync(keep_info=True)
+        " THIS IS TOO SLOW!
+        "au InsertEnter <buffer> py coquille.sync(keep_info=True)
     endif
 endfunction
 

@@ -9,6 +9,7 @@ from collections import deque
 import vimbufsync
 vimbufsync.check_version("0.1.0", who="coquille")
 
+#import time
 #DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
 #def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
 
@@ -30,12 +31,15 @@ info_msg = None
 
 def sync(keep_info=False):
     global saved_sync
+    #debugln("sync 1: " + str(time.time()))
     curr_sync = vimbufsync.sync()
+    #debugln("sync 2: " + str(time.time()))
     if not saved_sync or curr_sync.buf() != saved_sync.buf():
         _reset()
     else:
         (line, col) = saved_sync.pos()
         rewind_to(line - 1, col, keep_info) # vim indexes from lines 1, coquille from 0
+    #debugln("sync 3: " + str(time.time()))
     saved_sync = curr_sync
 
 def _reset():
@@ -98,7 +102,9 @@ def coq_to_cursor():
         print("Error: Coqtop isn't running. Are you sure you called :CoqLaunch?")
         return
 
+    #debugln('BEGIN COQ TO CURSOR SYNC: ' + str(time.time()))
     sync()
+    #debugln('END COQ TO CURSOR SYNC: ' + str(time.time()))
 
     (cline, ccol) = vim.current.window.cursor
     (line, col)  = encountered_dots[-1] if encountered_dots else (0,0)
@@ -115,14 +121,18 @@ def coq_to_cursor():
             else:
                 break
 
+        #debugln('BEGIN COQ TO CORSOR send_until_fail: ' + str(time.time()))
         send_until_fail()
+        #debugln('END COQ TO COROSE send_until_fail: ' + str(time.time()))
 
 def coq_next():
     if CT.coqtop is None:
         print("Error: Coqtop isn't running. Are you sure you called :CoqLaunch?")
         return
 
+    #debugln('BEGIN COQ NEXT SYNC: ' + str(time.time()))
     sync()
+    #debugln('END COQ NEXT SYNC: ' + str(time.time()))
 
     (line, col)  = encountered_dots[-1] if encountered_dots else (0,0)
     message_range = _get_message_range((line, col))
@@ -131,7 +141,9 @@ def coq_next():
 
     send_queue.append(message_range)
 
+    #debugln('BEGIN COQ NEXT send_until_fail: ' + str(time.time()))
     send_until_fail()
+    #debugln('END COQ NEXT send_until_fail: ' + str(time.time()))
     if (vim.eval('g:coquille_auto_move') == 'true'):
         goto_last_sent_dot()
 
@@ -181,8 +193,11 @@ def debug():
 #####################################
 
 def refresh():
-    show_goal()
+    if CT.isrunning():
+        show_goal()
     show_info()
+    if not CT.isrunning():
+        _reset()
     reset_color()
 
 def show_goal():
@@ -259,8 +274,12 @@ def show_info():
 
     del buff[:]
     if info_msg is not None:
-        lst = info_msg.decode('utf-8').split('\n')
-        buff.append(map(lambda s: s.encode('utf-8'), lst))
+        try:
+            lst = info_msg.decode('utf-8').split('\n')
+            buff.append(map(lambda s: s.encode('utf-8'), lst))
+        except:
+            lst = info_msg.split('\n')
+            buff.append(lst)
 
 def clear_info():
     global info_msg
@@ -338,6 +357,7 @@ def send_until_fail():
     error.
     When this function returns, [send_queue] is empty.
     """
+
     clear_info()
 
     global encountered_dots, message, message_range
@@ -352,7 +372,10 @@ def send_until_fail():
         message = _between(message_range['start'], message_range['stop'])
 
         resp_adv = CT.advance(message, encoding)
+
+        #debugln('BEGIN GET GOALS: ' + str(time.time()))
         resp_goal = CT.goals()
+        #debugln('END GET GOALS: ' + str(time.time()))
 
         if resp_adv is None or resp_goal is None:
             vim.command("call coquille#KillSession()")
@@ -371,7 +394,8 @@ def send_until_fail():
                 set_error_info(resp_adv.err)
             elif isinstance(resp_goal, CT.Err):
                 set_error_info(resp_goal.err)
-                CT.rewind(1)
+                if CT.isrunning():
+                    CT.rewind(1)
             else:
                 print("(ANOMALY) unknown answer: %s AND %s" %\
                         ET.tostring(resp_adv), ET.tostring(resp_goal))
