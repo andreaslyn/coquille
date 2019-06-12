@@ -14,8 +14,8 @@ poll = select.poll()
 
 from collections import deque, namedtuple
 
-#DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
-#def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
+DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
 
 Ok = namedtuple('Ok', ['val', 'msg'])
 Err = namedtuple('Err', ['err'])
@@ -189,10 +189,11 @@ def unescape(cmd):
               .replace("&#40;", '(') \
               .replace("&#41;", ')')
 
-def get_answer(do_timeout=False):
+def get_answer(do_timeout=False, timeout=None):
     messageNode = None
-    timeout = float(vim.eval('g:coquille_timeout'))
     starttime = time.time()
+    if timeout == None:
+        timeout=float(vim.eval('g:coquille_timeout'))
     data = ''
     while True:
         if do_timeout and time.time() - starttime >= timeout:
@@ -235,11 +236,11 @@ def get_answer(do_timeout=False):
             # coqtop died
             return None
 
-def call(name, arg, encoding='utf-8', do_timeout=False):
+def call(name, arg, encoding='utf-8', do_timeout=False, timeout=None):
     xml = encode_call(name, arg, encoding)
     msg = ET.tostring(xml, encoding)
     send_cmd(msg)
-    response = get_answer(do_timeout)
+    response = get_answer(do_timeout, timeout)
     return response
 
 def send_cmd(cmd):
@@ -292,19 +293,25 @@ def find_CoqProject_flags():
     #debugln('_CopProject flags:')
     #for r in ret:
     #    debugln(r)
-    return ret
+    return filter(lambda s: s != "-arg", ret)
 
 def restart_coq(*args):
     global coqtop, root_state, state_id
     if coqtop: kill_coqtop()
-    #executable = '/home/andreas/Source/Coq-Equations/custom-HoTT/hoqidetop'; extra = []
-    #executable = '/home/andreas/Source/Coq-Equations/Equations-HoTT/hoqidetop'; extra = []
     #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
-    executable = 'coqidetop'; extra = [] # extra = ['-ideslave']
+    #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = ['-allow-sprop']
+    #executable = '/home/andreas/Source/HoTT-Local/hoqidetop'; extra = []
+    #executable = '/home/andreas/Source/HoTT/hoqidetop'; extra = []
+    #executable = 'hoqidetop'; extra = []
+    #executable = 'hoqidetop'; extra = ['-I', '/home/andreas/Source/paramcoq/src/']
     #executable = 'coqidetop'; extra = ['-allow-sprop']
-    #executable = 'coqidetop'; extra = ['-coqlib', '/home/andreas/Source/coq', '-q', '-native-compiler', 'yes', '-allow-sprop']
-    #executable = '/home/andreas/Source/UniMath/sub/coq/bin/coqidetop.opt'; extra = [] # extra = ['-ideslave']
+    #executable = 'coqidetop'; extra = ['-noinit']
+    #executable = '/home/andreas/Source/coq/bin/coqidetop.opt'; extra = ['-coqlib', '/home/andreas/Source/coq', '-q', '-native-compiler', 'yes', '-allow-sprop']
+    #executable = '/home/andreas/Source/coq/bin/coqidetop'; extra = []
+    executable = vim.eval('g:coquille_exe')
+    extra = vim.eval('g:coquille_args')
     options = [ executable
+              # , '-ideslave'
               , '-quiet'
               , '-main-channel'
               , 'stdfds'
@@ -331,15 +338,18 @@ def restart_coq(*args):
 
         poll.register(coqtop.stdout.fileno())
 
-        r = call('Init', Option(None))
-        assert isinstance(r, Ok)
+        r = call('Init', Option(None), do_timeout=True, timeout=1)
+        if isinstance(r, Err):
+            raise RuntimeError(r.err)
         root_state = r.val
         state_id = r.val
-    except OSError:
-        print("Error: couldn't launch coqtop")
+        return True
+    except:
+        vim.command('echohl ErrorMsg | echom "Error: couldn\'t launch coqtop" | echohl None')
+        return False
 
 def launch_coq(*args):
-    restart_coq(*args)
+    return restart_coq(*args)
 
 def cur_state():
     if len(states) == 0:

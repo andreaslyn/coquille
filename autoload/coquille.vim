@@ -10,6 +10,20 @@ if !exists('coquille_timeout')
     let g:coquille_timeout=7
 endif
 
+" The coqtop executable
+if !exists('coquille_exe')
+    let g:coquille_exe="coqidetop"
+endif
+
+command! -nargs=1 -complete=file_in_path CoqExe let g:coquille_exe=<q-args>
+
+" The coqtop arguments
+if !exists('coquille_args')
+    let g:coquille_args=[]
+endif
+
+command! -nargs=* CoqArgs let g:coquille_args=[<f-args>]
+
 " Load vimbufsync if not already done
 call vimbufsync#init()
 
@@ -93,7 +107,8 @@ function! coquille#Launch(...)
 
         command! -buffer -nargs=* Coq call coquille#RawQuery(<f-args>)
 
-        call coquille#ShowPanels()
+        py coquille.try_show_panels()
+        " call coquille#ShowPanels()
 
         " Automatically sync the buffer when entering insert mode: this is usefull
         " when we edit the portion of the buffer which has already been sent to coq,

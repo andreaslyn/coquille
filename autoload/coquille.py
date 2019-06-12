@@ -25,6 +25,8 @@ error_at = None
 
 info_msg = None
 
+launch_succeeded = False
+
 ###################
 # synchronization #
 ###################
@@ -179,7 +181,11 @@ def coq_raw_query(*args):
 
 
 def launch_coq(*args):
-    CT.restart_coq(*args)
+    global launch_succeeded
+    launch_succeeded = CT.restart_coq(*args)
+    if not launch_succeeded:
+        vim.command('let s:coq_running = 0')
+
 
 def debug():
     if encountered_dots:
@@ -187,6 +193,12 @@ def debug():
         for (line, col) in encountered_dots:
             print("  (%d, %d) ; " % (line, col))
         print("]")
+
+
+def try_show_panels():
+    if launch_succeeded:
+        vim.command('call coquille#ShowPanels()')
+
 
 #####################################
 # IDE tools: Goal, Infos and colors #
