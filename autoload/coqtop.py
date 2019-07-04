@@ -14,8 +14,8 @@ poll = select.poll()
 
 from collections import deque, namedtuple
 
-DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
-def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
+#DEBUGFILE = open('/tmp/DEBUGFILE', 'a')
+#def debugln(s): DEBUGFILE.write(s + '\n'); DEBUGFILE.flush()
 
 Ok = namedtuple('Ok', ['val', 'msg'])
 Err = namedtuple('Err', ['err'])
