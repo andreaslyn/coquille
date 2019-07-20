@@ -15,7 +15,7 @@ if !exists('coquille_exe')
     let g:coquille_exe="coqidetop"
 endif
 
-command! -nargs=1 -complete=file_in_path CoqExe let g:coquille_exe=<q-args>
+command! -nargs=1 -complete=shellcmd CoqExe let g:coquille_exe=<q-args>
 
 " The coqtop arguments
 if !exists('coquille_args')
